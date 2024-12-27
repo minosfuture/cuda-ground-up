@@ -25,7 +25,7 @@ struct KernelProfiler {
     time_in_ms.push_back(elapsed_ms);
   }
 
-  double logVectorAddKernelStats(const unsigned int N) {
+  double log_vec_add_stats(const unsigned int N) {
     double avg_time_ms =
         std::accumulate(time_in_ms.begin(), time_in_ms.end(), 0.0) /
         time_in_ms.size();

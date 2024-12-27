@@ -19,13 +19,9 @@ __global__ void kernel_vector_add_3(half *A, half *B, half *C,
   }
 }
 
-void kernel_vector_add_3_launch(const unsigned int N,
+void kernel_vector_add_3_launch(half *dev_A, half *dev_B, half *dev_C,
+                                const unsigned int N,
                                 const unsigned int num_runs = 10) {
-  half *dev_A, *dev_B, *dev_C;
-  CUDA_CHECK(cudaMalloc(&dev_A, N * sizeof(half)));
-  CUDA_CHECK(cudaMalloc(&dev_B, N * sizeof(half)));
-  CUDA_CHECK(cudaMalloc(&dev_C, N * sizeof(half)));
-
   dim3 grid_dim(N / kPerBlockDataSize);
   dim3 block_dim(kBlockSize);
 
@@ -39,5 +35,5 @@ void kernel_vector_add_3_launch(const unsigned int N,
   CUDA_CHECK(cudaPeekAtLastError());
 
   std::cout << __FUNCTION__ << " GFLOPS for size (" << N
-            << "): " << profiler.logVectorAddKernelStats(N) << std::endl;
+            << "): " << profiler.log_vec_add_stats(N) << std::endl;
 }
