@@ -11,6 +11,8 @@ int main(int argc, char **argv) {
   }
 
   kernel_vector_add_1_launch(N, num_runs);
+  kernel_vector_add_2_launch(N, num_runs);
+  kernel_vector_add_3_launch(N, num_runs);
 
   return EXIT_SUCCESS;
 }
