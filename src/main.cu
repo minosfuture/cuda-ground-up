@@ -10,9 +10,7 @@ int main(int argc, char **argv) {
     N *= std::stoi(argv[i]);
   }
 
-  kernel_vector_add_1_launch(N, num_runs);
-  kernel_vector_add_2_launch(N, num_runs);
-  kernel_vector_add_3_launch(N, num_runs);
+  kernel_vector_add(N, num_runs);
 
   return EXIT_SUCCESS;
 }

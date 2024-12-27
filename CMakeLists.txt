@@ -16,7 +16,7 @@ endif()
 set(CMAKE_CUDA_ARCHITECTURES 75)
 set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -arch=sm_75 --std=c++17")
 
-file(GLOB SOURCES "src/kernel*.cu")
+file(GLOB SOURCES "src/kernel*.cu" "src/kernel*.cc")
 add_library(kernels ${SOURCES})
 target_compile_options(kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-v>) # print register use
 #target_compile_options(kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas -dlcm=cg>) # turn off L1 cache
