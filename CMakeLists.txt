@@ -28,5 +28,7 @@ target_compile_options(kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:--generate-lin
 #add_library(cublas_launch src/cublas_benchmark.cu)
 #target_link_libraries(cublas_launch CUDA::cublas)
 
-add_executable(runner src/main.cu)
-target_link_libraries(runner PUBLIC kernels) # cublas_launch)
+add_executable(vecadd_runner src/vecadd_main.cu)
+add_executable(gemm_runner src/gemm_main.cu)
+target_link_libraries(vecadd_runner PUBLIC kernels) # cublas_launch)
+target_link_libraries(gemm_runner PUBLIC kernels) # cublas_launch)
