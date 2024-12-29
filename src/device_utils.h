@@ -30,7 +30,7 @@ struct KernelProfiler {
     double avg_time_ms =
         std::accumulate(time_in_ms.begin(), time_in_ms.end(), 0.0) /
         time_in_ms.size();
-    double total_flop = 2.0 * M * N * K;
+    double total_flop = 2.0 * M * N * K + M * N /* epilogue */;
     double gflops = total_flop / (avg_time_ms * 1e6);
     time_in_ms.clear();
     return gflops;

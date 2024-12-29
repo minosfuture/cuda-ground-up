@@ -35,7 +35,7 @@ struct GemmData {
   half *dev_B;
   half *dev_C;
 
-  void gen_host() {
+  void gen_host(bool random_init = false) {
     A = (half *)malloc(size_A);
     B = (half *)malloc(size_B);
     C = (half *)malloc(size_C);
@@ -56,7 +56,9 @@ struct GemmData {
     for (int i = 0; i < num_C; ++i) {
       C[i] = (half)(rand() / (float)RAND_MAX);
     }
-    host_gemm(C_ref);
+    if (random_init) {
+      host_gemm(C_ref);
+    }
   }
 
   void gen_dev() {
@@ -125,3 +127,4 @@ void kernel_gemm(const unsigned int M, const unsigned int N,
                  const unsigned int K, half alpha, half beta,
                  const unsigned int num_runs = 10);
 void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs);
+void kernel_gemm_2_launch(GemmData &data, const unsigned int num_runs);

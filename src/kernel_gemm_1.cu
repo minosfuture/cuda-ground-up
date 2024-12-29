@@ -1,11 +1,19 @@
 #include "kernel_gemm.h"
 
+#include <cmath>
 #include <cuda_runtime.h>
 
 __global__ void kernel_gemm_1(half *A, half *B, half *C, int M, int N, int K,
                               half alpha, half beta) {
-  int row = blockIdx.y * blockDim.y + threadIdx.y;
-  int col = blockIdx.x * blockDim.x + threadIdx.x;
+  // mismatch between x/y dimention and row/col dimention, causing uncoalsced
+  // gmem access.
+  // in threadIdx, x is the major.
+  // in matrix C, row is the major.
+  // so, in order to achieve coalsced memory access, x should be used as col
+  // index here (it IS in the first place).
+  // let's fix this in kernel 2 for comparison.
+  int row = blockIdx.x * blockDim.x + threadIdx.x;
+  int col = blockIdx.y * blockDim.y + threadIdx.y;
 
   if (row < M && col < N) {
     half value = 0.0f;
@@ -19,16 +27,16 @@ __global__ void kernel_gemm_1(half *A, half *B, half *C, int M, int N, int K,
 }
 
 void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs) {
-  dim3 blockSize(16, 16);
-  dim3 gridSize((data.dim_n + blockSize.x - 1) / blockSize.x,
-                (data.dim_m + blockSize.y - 1) / blockSize.y);
-
+  constexpr int kBlockSize = 16;
+  dim3 block_size(kBlockSize, kBlockSize);
+  dim3 grid_size(std::ceil(data.dim_m / block_size.x),
+                 std::ceil(data.dim_n / block_size.y));
   KernelProfiler profiler;
   for (int i = 0; i < num_runs; i++) {
     profiler.start();
-    kernel_gemm_1<<<gridSize, blockSize>>>(data.dev_A, data.dev_B, data.dev_C,
-                                           data.dim_m, data.dim_n, data.dim_k,
-                                           data.alpha, data.beta);
+    kernel_gemm_1<<<grid_size, block_size, 0, cudaStreamPerThread>>>(
+        data.dev_A, data.dev_B, data.dev_C, data.dim_m, data.dim_n, data.dim_k,
+        data.alpha, data.beta);
     profiler.stop();
     // moved correctness check here because results accumulate on C
     if (i == 0) {
