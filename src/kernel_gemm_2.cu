@@ -45,8 +45,12 @@ void kernel_gemm_2_launch(GemmData &data, const unsigned int num_runs) {
               << std::endl;
   };
   func(dim3(16, 16));
+  data.reset_c();
   func(dim3(32, 8));
+  data.reset_c();
   func(dim3(64, 4));
+  data.reset_c();
   func(dim3(128, 2));
+  data.reset_c();
   func(dim3(256, 1));
 }

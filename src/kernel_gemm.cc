@@ -14,4 +14,6 @@ void kernel_gemm(const unsigned int M, const unsigned int N,
   data.reset_c();
   kernel_gemm_2_launch(data, num_runs);
   data.reset_c();
+  kernel_gemm_3_launch(data, num_runs);
+  data.reset_c();
 }
