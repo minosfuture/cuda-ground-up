@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cuda_runtime.h>
 
-constexpr int kTileK = 16;
+constexpr int kTileK = 32;
 
 __global__ void kernel_gemm_3(half *A, half *B, half *C, int M, int N, int K,
                               half alpha, half beta) {
@@ -72,9 +72,5 @@ void kernel_gemm_3_launch(GemmData &data, const unsigned int num_runs) {
               << profiler.log_gemm_stats(data.dim_m, data.dim_n, data.dim_k)
               << std::endl;
   };
-  func(dim3(16, 16));
-  // func(dim3(32, 8));
-  // func(dim3(64, 4));
-  // func(dim3(128, 2));
-  // func(dim3(256, 1));
+  func(dim3(32, 32));
 }

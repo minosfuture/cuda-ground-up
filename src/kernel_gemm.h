@@ -126,6 +126,3 @@ struct GemmData {
 void kernel_gemm(const unsigned int M, const unsigned int N,
                  const unsigned int K, half alpha, half beta,
                  const unsigned int num_runs = 10);
-void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs);
-void kernel_gemm_2_launch(GemmData &data, const unsigned int num_runs);
-void kernel_gemm_3_launch(GemmData &data, const unsigned int num_runs);
