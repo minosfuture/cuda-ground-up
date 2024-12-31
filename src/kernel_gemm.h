@@ -50,8 +50,10 @@ struct GemmData {
     for (int i = 0; i < num_A; ++i) {
       A[i] = (half)(rand() / (float)RAND_MAX);
     }
-    for (int i = 0; i < num_B; ++i) {
-      B[i] = (half)(rand() / (float)RAND_MAX);
+    for (int i = 0; i < dim_k; ++i) {
+      for (int j = 0; j < dim_n; ++j) {
+        B[i * dim_n + j] = (half)(rand() / (float)RAND_MAX);
+      }
     }
     for (int i = 0; i < num_C; ++i) {
       C[i] = (half)(rand() / (float)RAND_MAX);

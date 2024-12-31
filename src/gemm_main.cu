@@ -9,7 +9,7 @@ int main(int argc, char **argv) {
   int N = std::stoi(argv[3]);
   int K = std::stoi(argv[4]);
 
-  kernel_gemm(M, N, K, 0.4, 0.6, num_runs);
+  kernel_gemm(M, N, K, 1, 1, num_runs);
 
   return EXIT_SUCCESS;
 }
