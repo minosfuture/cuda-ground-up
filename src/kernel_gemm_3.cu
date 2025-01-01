@@ -11,7 +11,7 @@ __global__ void kernel_gemm_3(half *A, half *B, half *C, int M, int N, int K,
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;
 
-  if (row >= M && col >= N) {
+  if (row >= M || col >= N) {
     return;
   }
 

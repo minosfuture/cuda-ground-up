@@ -2,11 +2,16 @@
 
 #include "utils.h"
 
+#include <bits/types/struct_timeval.h>
 #include <cmath>
 #include <cstdlib>
 #include <cuda.h>
 #include <cuda_fp16.h>
 #include <iostream>
+#include <sys/time.h>
+
+struct GemmData;
+bool kernel_verify_launch(GemmData &data);
 
 struct GemmData {
   GemmData(unsigned int M, unsigned int N, unsigned int K, float alpha_param,
@@ -34,31 +39,36 @@ struct GemmData {
   half *dev_A;
   half *dev_B;
   half *dev_C;
+  half *dev_C_ref;
 
-  void gen_host(bool random_init = false) {
+  void gen_host(bool prep_host_gemm = false) {
     A = (half *)malloc(size_A);
     B = (half *)malloc(size_B);
     C = (half *)malloc(size_C);
     C_ref = (half *)malloc(size_C);
 
+    struct timeval time;
+    gettimeofday(&time, nullptr);
+    srand(time.tv_usec);
     if (A == nullptr || B == nullptr || C == nullptr) {
       std::cerr << "Failed to allocate host vectors!" << std::endl;
       exit(EXIT_FAILURE);
     }
 
     std::cout << "initialize host input vectors..." << std::endl;
+    auto rand_gen = [](float lb = -0.1, float ub = 0.1) {
+      return (half)(lb + (rand() / (float)RAND_MAX * (ub - lb)));
+    };
     for (int i = 0; i < num_A; ++i) {
-      A[i] = (half)(rand() / (float)RAND_MAX);
+      A[i] = rand_gen();
     }
-    for (int i = 0; i < dim_k; ++i) {
-      for (int j = 0; j < dim_n; ++j) {
-        B[i * dim_n + j] = (half)(rand() / (float)RAND_MAX);
-      }
+    for (int i = 0; i < num_B; ++i) {
+      B[i] = rand_gen();
     }
     for (int i = 0; i < num_C; ++i) {
-      C[i] = (half)(rand() / (float)RAND_MAX);
+      C[i] = rand_gen();
     }
-    if (random_init) {
+    if (prep_host_gemm) {
       host_gemm(C_ref);
     }
   }
@@ -67,6 +77,7 @@ struct GemmData {
     CUDA_CHECK(cudaMalloc(&dev_A, size_A));
     CUDA_CHECK(cudaMalloc(&dev_B, size_B));
     CUDA_CHECK(cudaMalloc(&dev_C, size_C));
+    CUDA_CHECK(cudaMalloc(&dev_C_ref, size_C));
     std::cout << "copy inputs..." << std::endl;
     CUDA_CHECK(cudaMemcpy(dev_A, A, size_A, cudaMemcpyDefault));
     CUDA_CHECK(cudaMemcpy(dev_B, B, size_B, cudaMemcpyDefault));
@@ -78,13 +89,18 @@ struct GemmData {
   }
 
   bool check_out() {
-    std::cout << "check outputs..." << std::endl;
-    half *kernel_output_C = (half *)malloc(size_C);
-    CUDA_CHECK(cudaMemcpy(kernel_output_C, dev_C, size_C, cudaMemcpyDefault));
-    bool res = check_correctness(kernel_output_C, C_ref);
+    const bool kUseGpuVerify = true;
+    if (kUseGpuVerify) {
+      return kernel_verify_launch(*this);
+    } else {
+      std::cout << "check outputs..." << std::endl;
+      half *kernel_output_C = (half *)malloc(size_C);
+      CUDA_CHECK(cudaMemcpy(kernel_output_C, dev_C, size_C, cudaMemcpyDefault));
+      bool res = check_correctness(kernel_output_C, C_ref);
 
-    delete kernel_output_C;
-    return res;
+      delete kernel_output_C;
+      return res;
+    }
   }
 
   void host_gemm(half *C_ref) {
@@ -106,7 +122,15 @@ struct GemmData {
     }
   }
 
-  bool check_correctness(half *C, half *C_ref, float epsilon = 0.5) {
+  // to be used by standard implemention, e.g., cublas, for fast correct result
+  // prepartion
+  // dev_C should contain correct results
+  void set_c_ref() {
+    CUDA_CHECK(cudaMemcpy(dev_C_ref, dev_C, size_C, cudaMemcpyDefault));
+    CUDA_CHECK(cudaMemcpy(C_ref, dev_C, size_C, cudaMemcpyDefault));
+  }
+
+  bool check_correctness(half *C, half *C_ref, float epsilon = 0.01) {
     for (int i = 0; i < dim_m; ++i) {
       for (int j = 0; j < dim_n; ++j) {
         float diff = std::abs(__half2float(C[i * dim_n + j]) -

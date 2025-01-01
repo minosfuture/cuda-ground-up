@@ -13,7 +13,7 @@ __global__ void kernel_gemm_5(half *A, half *B, half *C, int M, int N, int K,
   int row = blockIdx.y * blockDim.y * kTileYDim + threadIdx.y * kTileYDim;
   int col = blockIdx.x * blockDim.x * kTileXDim + threadIdx.x * kTileXDim;
 
-  if (row >= M && col >= N) {
+  if (row >= M || col >= N) {
     return;
   }
 
@@ -89,18 +89,20 @@ void kernel_gemm_5_launch(GemmData &data, const unsigned int num_runs) {
                                 block_size.y * kTileYDim * kTileK) *
                                sizeof(half);
 
-    KernelProfiler profiler;
-    for (int i = 0; i < num_runs; i++) {
-      profiler.start();
+    auto kernel_func = [&]() {
       kernel_gemm_5<<<grid_size, block_size, kSharedMemSize,
                       cudaStreamPerThread>>>(data.dev_A, data.dev_B, data.dev_C,
                                              data.dim_m, data.dim_n, data.dim_k,
                                              data.alpha, data.beta);
+    };
+    kernel_func();
+    data.check_out();
+
+    KernelProfiler profiler;
+    for (int i = 0; i < num_runs; i++) {
+      profiler.start();
+      kernel_func();
       profiler.stop();
-      // moved correctness check here because results accumulate on C
-      if (i == 0) {
-        data.check_out();
-      }
     }
     CUDA_CHECK(cudaPeekAtLastError());
 

@@ -27,10 +27,10 @@ __global__ void kernel_gemm_1(half *A, half *B, half *C, int M, int N, int K,
 }
 
 void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs) {
-  constexpr int kBlockSize = 16;
+  constexpr int kBlockSize = 32;
   dim3 block_size(kBlockSize, kBlockSize);
-  dim3 grid_size(std::ceil(data.dim_m / block_size.x),
-                 std::ceil(data.dim_n / block_size.y));
+  dim3 grid_size(std::ceil(data.dim_n / block_size.x),
+                 std::ceil(data.dim_m / block_size.y));
   KernelProfiler profiler;
   for (int i = 0; i < num_runs; i++) {
     profiler.start();
@@ -45,7 +45,7 @@ void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs) {
   }
   CUDA_CHECK(cudaPeekAtLastError());
 
-  std::cout << __FUNCTION__ << " GFLOPS for size (" << data.dim_m << "x"
+  std::cout << "kernel 1 naive GFLOPS for size (" << data.dim_m << "x"
             << data.dim_n << "x" << data.dim_k << "): "
             << profiler.log_gemm_stats(data.dim_m, data.dim_n, data.dim_k)
             << std::endl;
