@@ -39,16 +39,6 @@ __global__ void kernel_gemm_4(half *A, half *B, half *C, int M, int N, int K,
       }
     }
     for (int tile_k_idx = 0; tile_k_idx < kTileK / blockDim.y; tile_k_idx++) {
-      // if (blockIdx.x == 0 && blockIdx.y == 0) {
-      //  printf(
-      //      "thread(%d,%d),block(%d,%d),tile_k_idx(%d),B_shmem_idx(%d),B_idx(%"
-      //      "d) %f\n",
-      //      threadIdx.x, threadIdx.y, blockIdx.x, blockIdx.y, tile_k_idx,
-      //      (threadIdx.y + tile_k_idx * blockDim.y) * blockDim.x +
-      //      threadIdx.x, (threadIdx.y + tile_k_idx * blockDim.y) * N +
-      //      threadIdx.x, (float)
-      //          B[(threadIdx.y + tile_k_idx * blockDim.y) * N + threadIdx.x]);
-      //}
       B_shmem[(threadIdx.y + tile_k_idx * blockDim.y) * blockDim.x +
               threadIdx.x] =
           B[(threadIdx.y + tile_k_idx * blockDim.y) * N + threadIdx.x];
@@ -59,13 +49,6 @@ __global__ void kernel_gemm_4(half *A, half *B, half *C, int M, int N, int K,
     for (int k = 0; k < kTileK; k++) {
       half B_reg = B_shmem[k * blockDim.x + threadIdx.x];
       for (int tile_y_idx = 0; tile_y_idx < kTileYDim; tile_y_idx++) {
-        // if (threadIdx.x == 0 && threadIdx.y == 0 && blockIdx.x == 0 &&
-        //    blockIdx.y == 0) {
-        //  printf("thread(%d,%d),block(%d,%d),k(%d),tile_idx(%d) %f * %f\n",
-        //         threadIdx.x, threadIdx.y, blockIdx.x, blockIdx.y, k,
-        //         tile_idx, (float)A_shmem[(start_y_idx + tile_y_idx) * kTileK
-        //         + k], (float)B_reg);
-        //}
         thread_tile_res[tile_y_idx] +=
             A_shmem[(start_y_idx + tile_y_idx) * kTileK + k] * B_reg;
       }
@@ -88,18 +71,21 @@ void kernel_gemm_4_launch(GemmData &data, const unsigned int num_runs) {
         (block_size.x * kTileK + block_size.y * kTileYDim * kTileK) *
         sizeof(half);
 
-    KernelProfiler profiler;
-    for (int i = 0; i < num_runs; i++) {
-      profiler.start();
+    auto kernel_func = [&]() {
       kernel_gemm_4<<<grid_size, block_size, kSharedMemSize,
                       cudaStreamPerThread>>>(data.dev_A, data.dev_B, data.dev_C,
                                              data.dim_m, data.dim_n, data.dim_k,
                                              data.alpha, data.beta);
-      profiler.stop();
       // moved correctness check here because results accumulate on C
-      if (i == 0) {
-        data.check_out();
-      }
+    };
+    kernel_func();
+    data.check_out();
+
+    KernelProfiler profiler;
+    for (int i = 0; i < num_runs; i++) {
+      profiler.start();
+      kernel_func();
+      profiler.stop();
     }
     CUDA_CHECK(cudaPeekAtLastError());
 

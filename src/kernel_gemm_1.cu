@@ -31,17 +31,20 @@ void kernel_gemm_1_launch(GemmData &data, const unsigned int num_runs) {
   dim3 block_size(kBlockSize, kBlockSize);
   dim3 grid_size(std::ceil(data.dim_n / block_size.x),
                  std::ceil(data.dim_m / block_size.y));
-  KernelProfiler profiler;
-  for (int i = 0; i < num_runs; i++) {
-    profiler.start();
+
+  auto kernel_func = [&]() {
     kernel_gemm_1<<<grid_size, block_size, 0, cudaStreamPerThread>>>(
         data.dev_A, data.dev_B, data.dev_C, data.dim_m, data.dim_n, data.dim_k,
         data.alpha, data.beta);
+  };
+  kernel_func();
+  data.check_out();
+
+  KernelProfiler profiler;
+  for (int i = 0; i < num_runs; i++) {
+    profiler.start();
+    kernel_func();
     profiler.stop();
-    // moved correctness check here because results accumulate on C
-    if (i == 0) {
-      data.check_out();
-    }
   }
   CUDA_CHECK(cudaPeekAtLastError());
 
