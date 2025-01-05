@@ -130,7 +130,6 @@ void kernel_gemm_6_launch(GemmData &data, const unsigned int num_runs) {
     const int kSharedMemSize = (kShmTileDataDimN * kShmTileDataDimK +
                                 kShmTileDataDimM * kShmTileDataDimK) *
                                sizeof(half);
-    std::cout << "shared mem size: " << kSharedMemSize << std::endl;
 
     auto kernel_func = [&]() {
       kernel_gemm_6<<<grid_size, block_size, kSharedMemSize,
