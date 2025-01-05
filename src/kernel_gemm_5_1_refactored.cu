@@ -65,9 +65,9 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
 
   for (int tile_idx = 0; tile_idx < K / kShmTileDataDimK; tile_idx++) {
     // copy into shared mem
-    for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimX;
-         tile_k_idx++) {
-      for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
+    for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
+      for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimX;
+           tile_k_idx++) {
         A_shmem[(start_y_idx + tile_y_idx) * kShmTileDataDimK +
                 tile_k_idx * kShmTileDataDimK + tx] =
             A[(start_y_idx + tile_y_idx) * K + tile_k_idx * kShmTileDataDimK +
@@ -85,15 +85,15 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
     __syncthreads();
     A += kShmTileDataDimK;
     B += kShmTileDataDimK * N;
-    for (int k = 0; k < kShmTileDataDimK; k++) {
+    for (int k = 0; k < kShmTileNumDimK; k++) {
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
         A_reg[tile_y_idx] =
             A_shmem[(ty * kRegTileDataDimM + tile_y_idx) * kShmTileDataDimK +
                     k];
       }
       for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
-        B_reg[tile_x_idx] =
-            B_shmem[(k * kBlockDimX + tx) * kRegTileDataDimN + tile_x_idx];
+        B_reg[tile_x_idx] = B_shmem[k * kRegTileDataDimK * kShmTileDataDimN +
+                                    tx * kRegTileDataDimN + tile_x_idx];
       }
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
         for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
