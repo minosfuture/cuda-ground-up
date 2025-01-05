@@ -8,6 +8,8 @@ constexpr int kBlockDimX = 32;
 constexpr int kBlockDimY = 16;
 
 // number of elements per register tile
+// processed in the most inner loop
+// to be processed by tensor core using mma.sync later
 constexpr int kRegTileDimM = 8;
 constexpr int kRegTileDimK = 1;
 constexpr int kRegTileDimN = 8;
@@ -18,6 +20,7 @@ constexpr int kRegTileNumDimM = 1;
 constexpr int kRegTileNumDimK = 1;
 constexpr int kRegTileNumDimN = 1;
 
+// size of data of the register tiles as a whole
 constexpr int kRegTileDataDimM = kRegTileNumDimM * kRegTileDimM;
 constexpr int kRegTileDataDimK = kRegTileNumDimK * kRegTileDimK;
 constexpr int kRegTileDataDimN = kRegTileNumDimN * kRegTileDimN;
@@ -47,30 +50,31 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
 
   extern __shared__ half shmem[];
   half *A_shmem = shmem;
-  half *B_shmem = &shmem[kBlockDimY * kRegTileDataDimM * kShmTileNumDimK];
+  half *B_shmem = &shmem[kShmTileDataDimM * kShmTileDataDimK];
 
-  A += by * kBlockDimY * kRegTileDataDimM * K;
-  B += bx * kBlockDimX * kRegTileDataDimN;
-  C += by * kBlockDimY * kRegTileDataDimM * N;
+  A += by * kShmTileDataDimM * K;
+  B += bx * kShmTileDataDimN;
+  C += by * kShmTileDataDimM * N;
 
-  half thread_tile_res[kRegTileDataDimM][kRegTileDataDimN] = {0.0};
+  half reg_tile[kRegTileDataDimM][kRegTileDataDimN] = {0.0};
   half A_reg[kRegTileDataDimM];
   half B_reg[kRegTileDataDimN];
 
   const int start_y_idx = ty * kRegTileDataDimM;
   const int start_x_idx = tx * kRegTileDataDimN;
 
-  for (int tile_idx = 0; tile_idx < K / kShmTileNumDimK; tile_idx++) {
+  for (int tile_idx = 0; tile_idx < K / kShmTileDataDimK; tile_idx++) {
     // copy into shared mem
-    for (int tile_k_idx = 0; tile_k_idx < kShmTileNumDimK / kBlockDimX;
+    for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimX;
          tile_k_idx++) {
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
-        A_shmem[(start_y_idx + tile_y_idx) * kShmTileNumDimK +
-                tile_k_idx * kBlockDimX + tx] =
-            A[(start_y_idx + tile_y_idx) * K + tile_k_idx * kBlockDimX + tx];
+        A_shmem[(start_y_idx + tile_y_idx) * kShmTileDataDimK +
+                tile_k_idx * kShmTileDataDimK + tx] =
+            A[(start_y_idx + tile_y_idx) * K + tile_k_idx * kShmTileDataDimK +
+              tx];
       }
     }
-    for (int tile_k_idx = 0; tile_k_idx < kShmTileNumDimK / kBlockDimY;
+    for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimY;
          tile_k_idx++) {
       for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
         B_shmem[(ty + tile_k_idx * kBlockDimY) * kBlockDimX * kRegTileDataDimN +
@@ -79,12 +83,13 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
       }
     }
     __syncthreads();
-    A += kShmTileNumDimK;
-    B += kShmTileNumDimK * N;
-    for (int k = 0; k < kShmTileNumDimK; k++) {
+    A += kShmTileDataDimK;
+    B += kShmTileDataDimK * N;
+    for (int k = 0; k < kShmTileDataDimK; k++) {
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
         A_reg[tile_y_idx] =
-            A_shmem[(ty * kRegTileDataDimM + tile_y_idx) * kShmTileNumDimK + k];
+            A_shmem[(ty * kRegTileDataDimM + tile_y_idx) * kShmTileDataDimK +
+                    k];
       }
       for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
         B_reg[tile_x_idx] =
@@ -92,7 +97,7 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
       }
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
         for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
-          thread_tile_res[tile_y_idx][tile_x_idx] +=
+          reg_tile[tile_y_idx][tile_x_idx] +=
               A_reg[tile_y_idx] * B_reg[tile_x_idx];
         }
       }
@@ -103,7 +108,7 @@ __global__ void kernel_gemm_5_1(half *A, half *B, half *C, int M, int N, int K,
   for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
     for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
       half &C_elem = C[(start_y_idx + tile_y_idx) * N + col + tile_x_idx];
-      C_elem = alpha * thread_tile_res[tile_y_idx][tile_x_idx] + beta * C_elem;
+      C_elem = alpha * reg_tile[tile_y_idx][tile_x_idx] + beta * C_elem;
     }
   }
 }
