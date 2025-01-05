@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 
 __global__ void kernel_verify(half *src, half *target, bool *result, int M,
-                              int N, half epsilon = 0.5) {
+                              int N, half epsilon = 0.05) {
 
   int row = blockIdx.y * blockDim.y + threadIdx.y;
   int col = blockIdx.x * blockDim.x + threadIdx.x;

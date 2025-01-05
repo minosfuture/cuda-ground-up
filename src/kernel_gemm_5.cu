@@ -106,9 +106,9 @@ void kernel_gemm_5_launch(GemmData &data, const unsigned int num_runs) {
     }
     CUDA_CHECK(cudaPeekAtLastError());
 
-    std::cout << "kernel 5 (2D tiling) (blockDim(" << block_size.x << ","
-              << block_size.y << ")) GFLOPS for size (" << data.dim_m << "x"
-              << data.dim_n << "x" << data.dim_k << "): "
+    std::cout << "kernel 5 (1D tiling for A and B) (blockDim(" << block_size.x
+              << "," << block_size.y << ")) GFLOPS for size (" << data.dim_m
+              << "x" << data.dim_n << "x" << data.dim_k << "): "
               << profiler.log_gemm_stats(data.dim_m, data.dim_n, data.dim_k)
               << std::endl;
   };

@@ -119,8 +119,8 @@ void kernel_gemm_5_1_launch(GemmData &data, const unsigned int num_runs) {
                    std::ceil(data.dim_m / block_size.y / kRegTileDataDimM));
 
     const int kSharedMemSize =
-        (block_size.x * kRegTileDataDimN * kShmTileNumDimK +
-         block_size.y * kRegTileDataDimM * kShmTileNumDimK) *
+        (block_size.x * kRegTileDataDimN * kShmTileDataDimK +
+         block_size.y * kRegTileDataDimM * kShmTileDataDimK) *
         sizeof(half);
 
     auto kernel_func = [&]() {
@@ -140,9 +140,9 @@ void kernel_gemm_5_1_launch(GemmData &data, const unsigned int num_runs) {
     }
     CUDA_CHECK(cudaPeekAtLastError());
 
-    std::cout << "kernel 5 (2D tiling refactored) (blockDim(" << block_size.x
-              << "," << block_size.y << ")) GFLOPS for size (" << data.dim_m
-              << "x" << data.dim_n << "x" << data.dim_k << "): "
+    std::cout << "kernel 5 (1D tiling for A and B, refactored) (blockDim("
+              << block_size.x << "," << block_size.y << ")) GFLOPS for size ("
+              << data.dim_m << "x" << data.dim_n << "x" << data.dim_k << "): "
               << profiler.log_gemm_stats(data.dim_m, data.dim_n, data.dim_k)
               << std::endl;
   };

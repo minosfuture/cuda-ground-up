@@ -10,8 +10,8 @@ constexpr int kBlockDimY = 16;
 // number of elements per register tile
 // processed in the most inner loop
 // to be processed by tensor core using mma.sync later
-constexpr int kRegTileDimM = 8;
-constexpr int kRegTileDimK = 1;
+constexpr int kRegTileDimM = 16;
+constexpr int kRegTileDimK = 8;
 constexpr int kRegTileDimN = 8;
 
 // number of register tiles per warp (when using tensor core) or thread (when
@@ -27,7 +27,7 @@ constexpr int kRegTileDataDimN = kRegTileNumDimN * kRegTileDimN;
 
 // number of shm tiles per shm
 constexpr int kShmTileNumDimM = kBlockDimY;
-constexpr int kShmTileNumDimK = 32; // looped over
+constexpr int kShmTileNumDimK = 4; // looped over
 constexpr int kShmTileNumDimN = kBlockDimX;
 
 constexpr int kShmTileDataDimM = kShmTileNumDimM * kRegTileDataDimM;
@@ -57,17 +57,17 @@ __global__ void kernel_gemm_6(half *A, half *B, half *C, int M, int N, int K,
   C += by * kShmTileDataDimM * N;
 
   half reg_tile[kRegTileDataDimM][kRegTileDataDimN] = {0.0};
-  half A_reg[kRegTileDataDimM];
-  half B_reg[kRegTileDataDimN];
+  half A_reg[kRegTileDataDimM][kRegTileDataDimK];
+  half B_reg[kRegTileDataDimK][kRegTileDataDimN];
 
   const int start_y_idx = ty * kRegTileDataDimM;
   const int start_x_idx = tx * kRegTileDataDimN;
 
   for (int tile_idx = 0; tile_idx < K / kShmTileDataDimK; tile_idx++) {
     // copy into shared mem
-    for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimX;
-         tile_k_idx++) {
-      for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
+    for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
+      for (int tile_k_idx = 0; tile_k_idx < kShmTileDataDimK / kBlockDimX;
+           tile_k_idx++) {
         A_shmem[(start_y_idx + tile_y_idx) * kShmTileDataDimK +
                 tile_k_idx * kShmTileDataDimK + tx] =
             A[(start_y_idx + tile_y_idx) * K + tile_k_idx * kShmTileDataDimK +
@@ -82,23 +82,32 @@ __global__ void kernel_gemm_6(half *A, half *B, half *C, int M, int N, int K,
             B[(ty + tile_k_idx * kBlockDimY) * N + start_x_idx + tile_x_idx];
       }
     }
+
     __syncthreads();
     A += kShmTileDataDimK;
     B += kShmTileDataDimK * N;
-    for (int k = 0; k < kShmTileDataDimK; k++) {
+    for (int k = 0; k < kShmTileNumDimK; k++) {
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
-        A_reg[tile_y_idx] =
-            A_shmem[(ty * kRegTileDataDimM + tile_y_idx) * kShmTileDataDimK +
-                    k];
+        for (int tile_k_idx = 0; tile_k_idx < kRegTileDataDimK; tile_k_idx++) {
+          A_reg[tile_y_idx][tile_k_idx] =
+              A_shmem[(ty * kRegTileDataDimM + tile_y_idx) * kShmTileDataDimK +
+                      k * kRegTileDataDimK + tile_k_idx];
+        }
       }
-      for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
-        B_reg[tile_x_idx] =
-            B_shmem[(k * kBlockDimX + tx) * kRegTileDataDimN + tile_x_idx];
+      for (int tile_k_idx = 0; tile_k_idx < kRegTileDataDimK; tile_k_idx++) {
+        for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
+          B_reg[tile_k_idx][tile_x_idx] =
+              B_shmem[(k * kRegTileDataDimK + tile_k_idx) * kShmTileDataDimN +
+                      tx * kRegTileDataDimN + tile_x_idx];
+        }
       }
       for (int tile_y_idx = 0; tile_y_idx < kRegTileDataDimM; tile_y_idx++) {
         for (int tile_x_idx = 0; tile_x_idx < kRegTileDataDimN; tile_x_idx++) {
-          reg_tile[tile_y_idx][tile_x_idx] +=
-              A_reg[tile_y_idx] * B_reg[tile_x_idx];
+          for (int tile_k_idx = 0; tile_k_idx < kRegTileDataDimK;
+               tile_k_idx++) {
+            reg_tile[tile_y_idx][tile_x_idx] +=
+                A_reg[tile_y_idx][tile_k_idx] * B_reg[tile_k_idx][tile_x_idx];
+          }
         }
       }
     }
@@ -115,13 +124,13 @@ __global__ void kernel_gemm_6(half *A, half *B, half *C, int M, int N, int K,
 
 void kernel_gemm_6_launch(GemmData &data, const unsigned int num_runs) {
   auto func = [&](dim3 block_size) {
-    dim3 grid_size(std::ceil(data.dim_n / block_size.x / kRegTileDataDimN),
-                   std::ceil(data.dim_m / block_size.y / kRegTileDataDimM));
+    dim3 grid_size(std::ceil(data.dim_n / kShmTileDataDimN),
+                   std::ceil(data.dim_m / kShmTileDataDimM));
 
-    const int kSharedMemSize =
-        (block_size.x * kRegTileDataDimN * kShmTileNumDimK +
-         block_size.y * kRegTileDataDimM * kShmTileNumDimK) *
-        sizeof(half);
+    const int kSharedMemSize = (kShmTileDataDimN * kShmTileDataDimK +
+                                kShmTileDataDimM * kShmTileDataDimK) *
+                               sizeof(half);
+    std::cout << "shared mem size: " << kSharedMemSize << std::endl;
 
     auto kernel_func = [&]() {
       kernel_gemm_6<<<grid_size, block_size, kSharedMemSize,
@@ -140,11 +149,11 @@ void kernel_gemm_6_launch(GemmData &data, const unsigned int num_runs) {
     }
     CUDA_CHECK(cudaPeekAtLastError());
 
-    std::cout << "kernel 6 (tensor core) (blockDim(" << block_size.x << ","
+    std::cout << "kernel 6 (2D tiling) (blockDim(" << block_size.x << ","
               << block_size.y << ")) GFLOPS for size (" << data.dim_m << "x"
               << data.dim_n << "x" << data.dim_k << "): "
               << profiler.log_gemm_stats(data.dim_m, data.dim_n, data.dim_k)
               << std::endl;
   };
-  func(dim3(32, 16));
+  func(dim3(kBlockDimX, kBlockDimY));
 }
